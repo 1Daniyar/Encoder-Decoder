@@ -1,0 +1,135 @@
+package correcter;
+
+import java.util.*;
+import java.io.*;
+import java.nio.file.*;
+
+public class Main {
+    private static final Random random;
+
+    static {
+        random = new Random();
+    }
+
+    private static byte[] readInputFile(String inputFileName) throws IOException {
+        return Files.readAllBytes(Paths.get(inputFileName));
+    }
+
+    private static void writeOutputFile(String outputFileName, byte[] content) throws IOException {
+        Files.write(Paths.get(outputFileName), content);
+    }
+
+    private static byte[] simulateErrors(byte[] content) {
+        for (int i = 0; i < content.length; i++) {
+            content[i] ^= (byte)(1 << random.nextInt(8));
+        }
+        return content;
+    }
+
+    private static byte calculateParityBits(byte b) {
+        byte pb = 0;
+
+        byte p1 = (byte)(((b & 32) >> 5) ^ ((b & 8) >> 3) ^ ((b & 2) >> 1));
+        byte p2 = (byte)(((b & 32) >> 5) ^ ((b & 4) >> 2) ^ ((b & 2) >> 1));
+        byte p4 = (byte)(((b & 8) >> 3) ^ ((b & 4) >> 2) ^ ((b & 2) >> 1));
+
+        pb |= (byte)((p1 << 7) | (p2 << 6) | (p4 << 4));
+
+        return pb;
+    }
+
+    private static byte[] encode(byte[] content) {
+        byte[] result = new byte[content.length * 2];
+
+        for (int i = 0, j = 0; i < content.length; i++) {
+            byte b = content[i];
+
+            byte b1 = 0;
+            b1 |= 32 & (b >> 2);
+            b1 |= 8 & (b >> 3);
+            b1 |= 4 & (b >> 3);
+            b1 |= 2 & (b >> 3);
+            b1 |= calculateParityBits(b1);
+
+            byte b2 = 0;
+            b2 |= 32 & (b << 2);
+            b2 |= 8 & (b << 1);
+            b2 |= 4 & (b << 1);
+            b2 |= 2 & (b << 1);
+            b2 |= calculateParityBits(b2);
+
+            result[j++] = b1;
+            result[j++] = b2;
+        }
+
+        return result;
+    }
+
+    private static int findBadBitPosition(byte b) {
+        int position = -1;
+
+        byte pb = calculateParityBits(b);
+        byte crc = (byte)((208 & b) ^ pb);
+        if (crc != 0) {
+            position = ((crc & 128) >> 7) + ((crc & 64) >> 5) + ((crc & 16) >> 2);
+        }
+
+        return position;
+    }
+
+    private static byte[] decode(byte[] content) {
+        byte[] result = new byte[content.length / 2];
+
+        for (int i = 0, j = 0; i < content.length; i += 2) {
+            byte b1 = content[i];
+            int badBitPosition = findBadBitPosition(b1);
+            if (badBitPosition != -1) {
+                b1 ^= (128 >> (badBitPosition - 1));
+            }
+            byte b2 = content[i + 1];
+            badBitPosition = findBadBitPosition(b2);
+            if (badBitPosition != -1) {
+                b2 ^= (128 >> (badBitPosition - 1));
+            }
+
+            byte b = 0;
+
+            b |= (byte)((b1 & 32) << 2);
+            b |= (byte)((b1 & 8) << 3);
+            b |= (byte)((b1 & 4) << 3);
+            b |= (byte)((b1 & 2) << 3);
+
+            b |= (byte)((b2 & 32) >> 2);
+            b |= (byte)((b2 & 8) >> 1);
+            b |= (byte)((b2 & 4) >> 1);
+            b |= (byte)((b2 & 2) >> 1);
+
+            result[j++] = b;
+        }
+
+        return result;
+    }
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        String sendFileName = "send.txt";
+        String receivedFileName = "received.txt";
+        String encodedFileName = "encoded.txt";
+        String decodedFileName = "decoded.txt";
+
+        try {
+            String mode = scanner.nextLine().trim().toLowerCase();
+
+            if ("encode".equals(mode)) {
+                writeOutputFile(encodedFileName, encode(readInputFile(sendFileName)));
+            } else if ("send".equals(mode)) {
+                writeOutputFile(receivedFileName, simulateErrors(readInputFile(encodedFileName)));
+            } else if ("decode".equals(mode)) {
+                writeOutputFile(decodedFileName, decode(readInputFile(receivedFileName)));
+            }
+        } catch (IOException exception) {
+            exception.printStackTrace();
+        }
+    }
+}
